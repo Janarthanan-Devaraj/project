@@ -4,11 +4,11 @@ from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 
-from .serializers import UserSerializer, LoginSerializer
-
 from .serializers import(CustomUserSerializer, User, LoginSerializer, 
                          UserProfile, AcademicInfo, 
-                         CompanyInfo, AcademicInfoSerializer,CompanyInfoSerializer, UserProfileSerializer)
+                         CompanyInfo, AcademicInfoSerializer,
+                         CompanyInfoSerializer, UserProfileSerializer,
+                         UserProfileDetailsSerializer)
 
 from rest_framework import status, generics, mixins
 
@@ -18,7 +18,7 @@ class SignUpView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        serializer = UserSerializer(data=request.data)
+        serializer = CustomUserSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
 
@@ -97,6 +97,13 @@ class CompanyInfoListCreateAPIView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+class UserRetrieveView(generics.RetrieveAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = UserProfileDetailsSerializer
+
+    def get_object(self):
+        return self.request.user
 
 # class UserProfileListAPIView(generics.CreateAPIView):
 #     permission_classes = [IsAuthenticated]
