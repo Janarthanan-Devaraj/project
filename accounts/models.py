@@ -2,31 +2,35 @@ from django.db import models
 from django.contrib.auth.models import (
     BaseUserManager, AbstractBaseUser
 )
-
+from django.core.mail import EmailMultiAlternatives
+from django.dispatch import receiver
+from django.template.loader import render_to_string
+from django.urls import reverse
+from rest_framework_simplejwt.tokens import RefreshToken
+from django_rest_passwordreset.signals import reset_password_token_created
 
 class CustomUserManager(BaseUserManager):
-    def create_user(self, email, password=None, student=False, alumni=False, **extra_fields):
+    def create_user(self, username, email,password=None, student=False, alumni=False, **extra_fields):
+        if username is None:
+            raise TypeError('Users should have a username')
         if not email:
             raise ValueError('The Email field must be set')
         email = self.normalize_email(email)
 
-        user = self.model(email=email, student=student, alumni=alumni, **extra_fields)
+        user = self.model(username = username, email=email, student=student, alumni=alumni, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
         return user
 
-    def create_superuser(self, email, password=None, student=False, alumni=False, **extra_fields):
-        extra_fields.setdefault('is_staff', True)
-        extra_fields.setdefault('is_superuser', True)
-        extra_fields.setdefault('student', student)
-        extra_fields.setdefault('alumni', alumni)
+    def create_superuser(self, username, email, password=None):
+        if password is None:
+            raise TypeError('Password should not be none')
 
-        if extra_fields.get('is_staff') is not True:
-            raise ValueError('Superuser must have is_staff=True.')
-        if extra_fields.get('is_superuser') is not True:
-            raise ValueError('Superuser must have is_superuser=True.')
-
-        return self.create_user(email, password=password, **extra_fields)
+        user = self.create_user(username, email, password)
+        user.is_superuser = True
+        user.is_staff = True
+        user.save()
+        return user
 
 
 class DateAbstract(models.Model):
@@ -39,7 +43,9 @@ class DateAbstract(models.Model):
 
 
 class CustomUser(AbstractBaseUser, DateAbstract):
-    email = models.EmailField(verbose_name='email', max_length=255, unique=True)
+    username = models.CharField(max_length=100, unique=True, db_index=True)
+    email = models.EmailField(verbose_name='email', max_length=255, unique=True, db_index=True)
+    is_verified = models.BooleanField(default=False)
     student = models.BooleanField(default=False)
     alumni = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
@@ -47,7 +53,7 @@ class CustomUser(AbstractBaseUser, DateAbstract):
     is_superuser = models.BooleanField(default=False)
 
     USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = []
+    REQUIRED_FIELDS = ['username']
 
     objects = CustomUserManager()
 
@@ -59,13 +65,19 @@ class CustomUser(AbstractBaseUser, DateAbstract):
 
     def has_module_perms(self, app_label):
         return True
+    
+    def tokens(self):
+        refresh = RefreshToken.for_user(self)
+        return {
+            'refresh': str(refresh) ,
+            'access': str(refresh.access_token) ,
+        }
 
 class UserProfile(DateAbstract):
     user = models.OneToOneField(CustomUser, related_name="user_profile", on_delete= models.CASCADE)
     avatar = models.ImageField(upload_to="user_avatar", blank=True, null=True, default='https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460__340.png')
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
-    username = models.CharField(max_length=100, unique= True)
     gender = models.CharField(max_length=6, choices=(("male", "male"), ("female", "female")))
     dob = models.DateField()
     
@@ -97,4 +109,5 @@ class CompanyInfo(DateAbstract):
 class ClubInfo(DateAbstract):
     user = models.OneToOneField(CustomUser, related_name="club_model", on_delete= models.CASCADE)
     club_name = models.TextField()
-    
+
+
